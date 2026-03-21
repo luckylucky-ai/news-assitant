@@ -144,18 +144,24 @@ def main() -> None:
         help="启用定时模式，每天早上 8:00 自动执行",
     )
     parser.add_argument(
-        "--hour", type=int, default=8,
+        "--hour", type=int, default=config.SCHEDULE_HOUR,
         help="定时执行的小时（24h 制，默认 8）",
     )
     parser.add_argument(
-        "--minute", type=int, default=0,
+        "--minute", type=int, default=config.SCHEDULE_MINUTE,
         help="定时执行的分钟（默认 0）",
     )
     args = parser.parse_args()
 
+    # 支持通过环境变量 RUN_MODE 控制（Railway 部署用）
+    run_mode = config.RUN_MODE
     if args.schedule:
+        run_mode = "schedule"
+
+    if run_mode == "schedule":
         asyncio.run(run_scheduled(args.hour, args.minute))
     else:
+        # cron 模式：执行一次后退出
         asyncio.run(run_digest())
 
 

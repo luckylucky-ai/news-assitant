@@ -30,6 +30,10 @@ NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
 # ---------- 通用 ----------
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 TIMEZONE = os.getenv("TIMEZONE", "Asia/Shanghai")
+# Railway 部署模式: "cron" = 每次执行一次后退出, "schedule" = 持续运行定时循环
+RUN_MODE = os.getenv("RUN_MODE", "schedule")
+SCHEDULE_HOUR = int(os.getenv("SCHEDULE_HOUR", "8"))
+SCHEDULE_MINUTE = int(os.getenv("SCHEDULE_MINUTE", "0"))
 
 # ---------- 话题关键词 ----------
 TOPICS = {
