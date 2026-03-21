@@ -59,10 +59,10 @@ def _build_content_blocks(
     items_by_category: dict[str, List[NewsItem]],
     date_str: str,
 ) -> list[dict]:
-    """构建飞书文档 block 列表（使用原始 dict，SDK 的 block builder 过于复杂）。"""
+    """构建飞书文档 block 列表（使用原始 dict，SDK 会自动转为 Block 对象）。"""
     blocks: list[dict] = []
 
-    # 日期副标题
+    # 日期副标题 (heading2 = block_type 4)
     blocks.append(_heading_block(f"日期：{date_str}  |  自动生成", level=2))
 
     category_icons = {"政治": "📌", "AI": "🤖", "投资": "📈"}
@@ -75,17 +75,17 @@ def _build_content_blocks(
         blocks.append(_heading_block(f"{icon} {category}", level=3))
 
         for idx, item in enumerate(items, 1):
-            # 标题（带链接）
+            encoded_url = _encode_url(item.url)
+            # 标题（带链接 + 粗体）
             blocks.append({
                 "block_type": 2,
                 "text": {
                     "style": {},
                     "elements": [{
-                        "tag": "textRun",
-                        "textRun": {
+                        "text_run": {
                             "content": f"{idx}. {item.title}",
-                            "textElementStyle": {
-                                "link": {"url": item.url},
+                            "text_element_style": {
+                                "link": {"url": encoded_url},
                                 "bold": True,
                             },
                         },
@@ -107,28 +107,36 @@ def _build_content_blocks(
                 "text": {
                     "style": {},
                     "elements": [{
-                        "tag": "textRun",
-                        "textRun": {
+                        "text_run": {
                             "content": "   🔗 查看原文",
-                            "textElementStyle": {"link": {"url": item.url}},
+                            "text_element_style": {"link": {"url": encoded_url}},
                         },
                     }],
                 },
             })
 
-        blocks.append({"block_type": 22})  # divider
+        blocks.append({"block_type": 22, "divider": {}})
 
     return blocks
 
 
+# 飞书 heading block_type: 3=h1, 4=h2, 5=h3, ..., 11=h9
+_HEADING_BLOCK_TYPE = {1: 3, 2: 4, 3: 5, 4: 6, 5: 7, 6: 8, 7: 9, 8: 10, 9: 11}
+_HEADING_KEY = {1: "heading1", 2: "heading2", 3: "heading3", 4: "heading4",
+                5: "heading5", 6: "heading6", 7: "heading7", 8: "heading8", 9: "heading9"}
+
+
 def _heading_block(text: str, level: int = 2) -> dict:
+    block_type = _HEADING_BLOCK_TYPE.get(level, 4)
+    key = _HEADING_KEY.get(level, "heading2")
     return {
-        "block_type": 3,
-        "text": {
-            "style": {"headingLevel": level},
+        "block_type": block_type,
+        key: {
             "elements": [{
-                "tag": "textRun",
-                "textRun": {"content": text, "textElementStyle": {}},
+                "text_run": {
+                    "content": text,
+                    "text_element_style": {},
+                },
             }],
         },
     }
@@ -140,11 +148,19 @@ def _text_block(text: str) -> dict:
         "text": {
             "style": {},
             "elements": [{
-                "tag": "textRun",
-                "textRun": {"content": text, "textElementStyle": {}},
+                "text_run": {
+                    "content": text,
+                    "text_element_style": {},
+                },
             }],
         },
     }
+
+
+def _encode_url(url: str) -> str:
+    """飞书 API 要求 URL 进行 percent-encoding。"""
+    from urllib.parse import quote
+    return quote(url, safe=":/?=&#")
 
 
 def _batch_create_blocks(
