@@ -3,9 +3,10 @@
 通过 MCP Server 抓取 X、YouTube、Reddit 内容，
 结合 NewsAPI 新闻，生成飞书文档并推送消息。
 
-用法：
-    python main.py            # 立即执行一次
-    python main.py --schedule # 每天定时自动执行
+运行模式（RUN_MODE 环境变量）：
+    schedule  - 持续运行，每天定时执行
+    cron      - 执行一次后退出（适合 Railway Cron Job）
+    server    - 启动 HTTP 服务，通过 POST /trigger 手动触发
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ import logging
 from collections import defaultdict
 from datetime import datetime
 from typing import List
+
+import os
 
 import config
 from sources.base import NewsItem
@@ -128,11 +131,57 @@ async def run_scheduled(hour: int = 8, minute: int = 0) -> None:
         await run_digest()
 
 
+async def run_server(port: int = 8080) -> None:
+    """启动 HTTP 服务，通过 POST /trigger 手动触发简报。
+
+    同时在后台运行定时任务。适合部署到 Railway 等平台，
+    既能定时执行，又能随时手动触发。
+    """
+    from aiohttp import web
+
+    _running = False
+
+    async def handle_trigger(request: web.Request) -> web.Response:
+        nonlocal _running
+        if _running:
+            return web.json_response({"status": "busy", "message": "简报正在生成中，请稍后"}, status=409)
+        _running = True
+        try:
+            await run_digest()
+            return web.json_response({"status": "ok", "message": "简报已生成并推送"})
+        except Exception as e:
+            logger.exception("Manual trigger failed")
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+        finally:
+            _running = False
+
+    async def handle_health(request: web.Request) -> web.Response:
+        return web.json_response({"status": "healthy"})
+
+    app = web.Application()
+    app.router.add_post("/trigger", handle_trigger)
+    app.router.add_get("/health", handle_health)
+    app.router.add_get("/", handle_health)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logger.info("HTTP server started on port %d — POST /trigger to run digest", port)
+
+    # 同时运行定时任务
+    await run_scheduled(config.SCHEDULE_HOUR, config.SCHEDULE_MINUTE)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="每日简报助手")
     parser.add_argument(
         "--schedule", action="store_true",
         help="启用定时模式，每天定时自动执行",
+    )
+    parser.add_argument(
+        "--server", action="store_true",
+        help="启动 HTTP 服务器模式（含定时 + 手动触发）",
     )
     parser.add_argument(
         "--hour", type=int, default=config.SCHEDULE_HOUR,
@@ -142,13 +191,21 @@ def main() -> None:
         "--minute", type=int, default=config.SCHEDULE_MINUTE,
         help="定时执行的分钟（默认 0）",
     )
+    parser.add_argument(
+        "--port", type=int, default=int(os.environ.get("PORT", "8080")),
+        help="HTTP 服务器端口（默认 8080 或 $PORT）",
+    )
     args = parser.parse_args()
 
     run_mode = config.RUN_MODE
     if args.schedule:
         run_mode = "schedule"
+    if args.server:
+        run_mode = "server"
 
-    if run_mode == "schedule":
+    if run_mode == "server":
+        asyncio.run(run_server(args.port))
+    elif run_mode == "schedule":
         asyncio.run(run_scheduled(args.hour, args.minute))
     else:
         asyncio.run(run_digest())

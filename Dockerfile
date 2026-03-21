@@ -18,4 +18,6 @@ RUN npx -y @enescinar/twitter-mcp --help 2>/dev/null || true \
 
 COPY . .
 
-CMD ["python", "main.py", "--schedule"]
+EXPOSE 8080
+
+CMD ["python", "main.py", "--server"]

@@ -31,7 +31,7 @@ NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
 # ---------- 通用 ----------
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 TIMEZONE = os.getenv("TIMEZONE", "Asia/Shanghai")
-RUN_MODE = os.getenv("RUN_MODE", "schedule")
+RUN_MODE = os.getenv("RUN_MODE", "server")
 SCHEDULE_HOUR = int(os.getenv("SCHEDULE_HOUR", "8"))
 SCHEDULE_MINUTE = int(os.getenv("SCHEDULE_MINUTE", "0"))
 
