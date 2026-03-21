@@ -18,6 +18,6 @@ RUN npx -y @enescinar/twitter-mcp --help 2>/dev/null || true \
 
 COPY . .
 
-EXPOSE 8080
-
-CMD ["python", "main.py", "--server"]
+# Railway 会通过环境变量 RUN_MODE 控制运行模式
+# cron 模式：执行一次退出 | server 模式：HTTP + 定时 | schedule 模式：纯定时
+CMD ["python", "main.py"]
