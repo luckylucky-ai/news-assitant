@@ -1,126 +1,91 @@
-"""YouTube 数据源 —— 使用 YouTube Data API v3。"""
+"""YouTube 数据源 —— 通过 mcp-youtube MCP Server 搜索视频。
+
+MCP Server: @kirbah/mcp-youtube
+工具: search_videos
+"""
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+import os
 from typing import List
-
-from googleapiclient.discovery import build
 
 import config
 from sources.base import BaseSource, NewsItem
+from sources.mcp_client import call_mcp_tool, mcp_session
 
 logger = logging.getLogger(__name__)
 
-# 关注的频道（可按需扩展）
-# 格式：(频道名, 频道ID, 分类)
-CHANNELS: list[tuple[str, str, str]] = [
-    # AI
-    ("Two Minute Papers", "UCbfYPyITQ-7l4upoX8nvctg", "AI"),
-    ("Yannic Kilcher", "UCZHmQk67mSJgfCCTn7xBfew", "AI"),
-    # 投资
-    ("Yahoo Finance", "UCEAZeUIeJs0IjQiqTCdVSIg", "投资"),
-    # 政治
-    ("TLDR News", "UCSMqateX8OA2s1wsOR2EgJA", "政治"),
-]
+# 每个分类的搜索词
+SEARCH_TERMS = {
+    "政治": "politics news today",
+    "AI": "AI artificial intelligence news",
+    "投资": "stock market crypto investing news",
+}
 
 
 class YouTubeSource(BaseSource):
     name = "YouTube"
 
-    def __init__(self) -> None:
-        self.youtube = build("youtube", "v3", developerKey=config.YOUTUBE_API_KEY)
+    async def fetch(self, queries: dict[str, list[str]]) -> List[NewsItem]:
+        if not config.YOUTUBE_API_KEY:
+            logger.warning("YOUTUBE_API_KEY not set, skipping YouTube source")
+            return []
 
-    def _search_sync(self, queries: List[str]) -> List[NewsItem]:
+        env = {
+            **os.environ,
+            "YOUTUBE_API_KEY": config.YOUTUBE_API_KEY,
+        }
+
         items: List[NewsItem] = []
-        seen: set[str] = set()
-        published_after = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        try:
+            async with mcp_session("npx", ["-y", "@kirbah/mcp-youtube"], env=env) as session:
+                tools = await session.list_tools()
+                tool_names = [t.name for t in tools.tools]
+                logger.info("YouTube MCP tools available: %s", tool_names)
 
-        # 1) 按关键词搜索最近 24h 的视频
-        search_terms = ["AI news", "politics news today", "stock market today", "crypto news"]
-        for term in search_terms:
-            try:
-                resp = (
-                    self.youtube.search()
-                    .list(
-                        q=term,
-                        part="snippet",
-                        type="video",
-                        order="viewCount",
-                        publishedAfter=published_after,
-                        maxResults=3,
-                        relevanceLanguage="en",
-                    )
-                    .execute()
-                )
-                for item in resp.get("items", []):
-                    vid = item["id"]["videoId"]
-                    if vid in seen:
-                        continue
-                    seen.add(vid)
-                    snippet = item["snippet"]
-                    category = self._classify(term)
-                    items.append(
-                        NewsItem(
-                            title=snippet["title"],
-                            url=f"https://www.youtube.com/watch?v={vid}",
-                            source=self.name,
-                            summary=snippet.get("description", "")[:300],
-                            author=snippet.get("channelTitle", ""),
-                            published_at=snippet.get("publishedAt", ""),
-                            category=category,
-                        )
-                    )
-            except Exception:
-                logger.exception("YouTube search failed for '%s'", term)
+                # 找到搜索工具
+                search_tool = None
+                for name in ["search_videos", "searchVideos", "search"]:
+                    if name in tool_names:
+                        search_tool = name
+                        break
+                if not search_tool:
+                    search_tool = tool_names[0] if tool_names else None
+                    logger.warning("Using fallback YouTube tool: %s", search_tool)
 
-        # 2) 从关注频道获取最新视频
-        for ch_name, ch_id, category in CHANNELS:
-            try:
-                resp = (
-                    self.youtube.search()
-                    .list(
-                        channelId=ch_id,
-                        part="snippet",
-                        type="video",
-                        order="date",
-                        publishedAfter=published_after,
-                        maxResults=2,
-                    )
-                    .execute()
-                )
-                for item in resp.get("items", []):
-                    vid = item["id"]["videoId"]
-                    if vid in seen:
-                        continue
-                    seen.add(vid)
-                    snippet = item["snippet"]
-                    items.append(
-                        NewsItem(
-                            title=snippet["title"],
-                            url=f"https://www.youtube.com/watch?v={vid}",
-                            source=self.name,
-                            summary=snippet.get("description", "")[:300],
-                            author=ch_name,
-                            published_at=snippet.get("publishedAt", ""),
-                            category=category,
+                if not search_tool:
+                    logger.error("No YouTube MCP tools found")
+                    return []
+
+                for category, term in SEARCH_TERMS.items():
+                    try:
+                        results = await call_mcp_tool(
+                            session,
+                            search_tool,
+                            {"query": term, "maxResults": 5},
                         )
-                    )
-            except Exception:
-                logger.exception("YouTube channel fetch failed for %s", ch_name)
+                        for video in results:
+                            vid = video.get("videoId", video.get("id", ""))
+                            title = video.get("title", "")
+                            url = f"https://www.youtube.com/watch?v={vid}" if vid else video.get("url", "")
+                            items.append(
+                                NewsItem(
+                                    title=title,
+                                    url=url,
+                                    source=self.name,
+                                    summary=video.get("description", "")[:300],
+                                    author=video.get("channelTitle", video.get("channel", "")),
+                                    published_at=video.get("publishedAt", ""),
+                                    category=category,
+                                    extra={
+                                        "views": video.get("viewCount", video.get("views", 0)),
+                                    },
+                                )
+                            )
+                    except Exception:
+                        logger.exception("YouTube MCP search failed for %s", category)
+        except Exception:
+            logger.exception("Failed to start YouTube MCP server")
 
         return items
-
-    @staticmethod
-    def _classify(term: str) -> str:
-        t = term.lower()
-        if any(k in t for k in ("ai", "llm", "machine learning")):
-            return "AI"
-        if any(k in t for k in ("politic", "election", "geopolitic")):
-            return "政治"
-        return "投资"
-
-    async def fetch(self, queries: List[str]) -> List[NewsItem]:
-        return await asyncio.to_thread(self._search_sync, queries)

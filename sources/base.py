@@ -35,5 +35,5 @@ class BaseSource:
 
     name: str = "base"
 
-    async def fetch(self, queries: List[str]) -> List[NewsItem]:
+    async def fetch(self, queries: dict[str, List[str]]) -> List[NewsItem]:
         raise NotImplementedError

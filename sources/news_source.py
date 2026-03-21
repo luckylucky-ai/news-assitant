@@ -14,9 +14,7 @@ from sources.base import BaseSource, NewsItem
 logger = logging.getLogger(__name__)
 
 EVERYTHING_URL = "https://newsapi.org/v2/everything"
-TOP_HEADLINES_URL = "https://newsapi.org/v2/top-headlines"
 
-# 每个分类的搜索词
 CATEGORY_QUERIES = {
     "政治": "politics OR geopolitics OR election OR diplomacy OR sanctions",
     "AI": "artificial intelligence OR LLM OR OpenAI OR Google AI OR machine learning",
@@ -27,7 +25,7 @@ CATEGORY_QUERIES = {
 class NewsSource(BaseSource):
     name = "NewsAPI"
 
-    async def fetch(self, queries: List[str]) -> List[NewsItem]:
+    async def fetch(self, queries: dict[str, list[str]]) -> List[NewsItem]:
         if not config.NEWSAPI_KEY:
             logger.warning("NEWSAPI_KEY not set, skipping NewsAPI source")
             return []

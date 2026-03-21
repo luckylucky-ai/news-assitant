@@ -1,14 +1,11 @@
 """每日简报助手 —— 主入口。
 
-功能：
-1. 并发抓取 X、YouTube、Reddit、新闻媒体的热点内容
-2. 按 政治 / AI / 投资 分类整理
-3. 创建飞书文档，写入详细内容（含原文链接）
-4. 推送飞书卡片消息，附带文档链接
+通过 MCP Server 抓取 X、YouTube、Reddit 内容，
+结合 NewsAPI 新闻，生成飞书文档并推送消息。
 
 用法：
     python main.py            # 立即执行一次
-    python main.py --schedule # 每天早上 8:00 自动执行
+    python main.py --schedule # 每天定时自动执行
 """
 
 from __future__ import annotations
@@ -16,7 +13,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import sys
 from collections import defaultdict
 from datetime import datetime
 from typing import List
@@ -42,25 +38,20 @@ async def collect_news() -> dict[str, List[NewsItem]]:
     """从所有数据源并发抓取新闻，按分类整理。"""
     sources = []
 
-    if config.REDDIT_CLIENT_ID:
-        sources.append(RedditSource())
+    # Reddit MCP 无需 API Key 也能用（匿名模式）
+    sources.append(RedditSource())
+
     if config.YOUTUBE_API_KEY:
         sources.append(YouTubeSource())
-    if config.X_BEARER_TOKEN:
+    if config.X_API_KEY:
         sources.append(XSource())
     if config.NEWSAPI_KEY:
         sources.append(NewsSource())
 
-    if not sources:
-        logger.error(
-            "No data sources configured! Please set API keys in .env file."
-        )
-        return {}
-
     logger.info("Fetching from %d sources: %s",
                 len(sources), [s.name for s in sources])
 
-    # 并发抓取
+    # 并发抓取，传入分类关键词
     tasks = [source.fetch(config.SEARCH_QUERIES) for source in sources]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -74,10 +65,11 @@ async def collect_news() -> dict[str, List[NewsItem]]:
             cat = item.category or "其他"
             items_by_category[cat].append(item)
 
-    # 每个分类按热度/时间排序（优先看 extra 里的 score）
+    # 按热度排序
     for cat in items_by_category:
         items_by_category[cat].sort(
-            key=lambda x: x.extra.get("score", 0), reverse=True
+            key=lambda x: x.extra.get("score", x.extra.get("views", 0)),
+            reverse=True,
         )
 
     total = sum(len(v) for v in items_by_category.values())
@@ -118,6 +110,7 @@ async def run_digest() -> None:
 async def run_scheduled(hour: int = 8, minute: int = 0) -> None:
     """定时执行，每天指定时间运行。"""
     from zoneinfo import ZoneInfo
+    from datetime import timedelta
 
     tz = ZoneInfo(config.TIMEZONE)
     logger.info("Scheduled mode: will run daily at %02d:%02d (%s)",
@@ -127,8 +120,6 @@ async def run_scheduled(hour: int = 8, minute: int = 0) -> None:
         now = datetime.now(tz)
         target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if target <= now:
-            # 已过今天的时间，等到明天
-            from datetime import timedelta
             target += timedelta(days=1)
 
         wait_seconds = (target - now).total_seconds()
@@ -141,7 +132,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="每日简报助手")
     parser.add_argument(
         "--schedule", action="store_true",
-        help="启用定时模式，每天早上 8:00 自动执行",
+        help="启用定时模式，每天定时自动执行",
     )
     parser.add_argument(
         "--hour", type=int, default=config.SCHEDULE_HOUR,
@@ -153,7 +144,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # 支持通过环境变量 RUN_MODE 控制（Railway 部署用）
     run_mode = config.RUN_MODE
     if args.schedule:
         run_mode = "schedule"
@@ -161,7 +151,6 @@ def main() -> None:
     if run_mode == "schedule":
         asyncio.run(run_scheduled(args.hour, args.minute))
     else:
-        # cron 模式：执行一次后退出
         asyncio.run(run_digest())
 
 
