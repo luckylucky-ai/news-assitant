@@ -9,9 +9,9 @@ load_dotenv()
 # ---------- 飞书 ----------
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
 FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
-FEISHU_RECEIVE_ID = os.getenv("FEISHU_RECEIVE_ID", "")
-FEISHU_RECEIVE_ID_TYPE = os.getenv("FEISHU_RECEIVE_ID_TYPE", "open_id")
 FEISHU_FOLDER_TOKEN = os.getenv("FEISHU_FOLDER_TOKEN", "")
+# 可选：指定群聊 chat_id，不填则自动发送到机器人所在的所有群
+FEISHU_CHAT_ID = os.getenv("FEISHU_CHAT_ID", "")
 
 # ---------- Reddit ----------
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID", "")

@@ -1,4 +1,4 @@
-"""飞书消息推送模块 —— 发送每日简报摘要到飞书。"""
+"""飞书消息推送模块 —— 通过机器人发送每日简报到群聊。"""
 
 from __future__ import annotations
 
@@ -15,6 +15,45 @@ from sources.base import NewsItem
 logger = logging.getLogger(__name__)
 
 SEND_MSG_URL = "https://open.feishu.cn/open-apis/im/v1/messages"
+BOT_CHATS_URL = "https://open.feishu.cn/open-apis/im/v1/chats"
+
+
+async def _get_bot_chat_ids() -> list[str]:
+    """获取机器人所在的所有群聊 chat_id。"""
+    # 如果配置了指定的 chat_id，直接用
+    if config.FEISHU_CHAT_ID:
+        return [cid.strip() for cid in config.FEISHU_CHAT_ID.split(",") if cid.strip()]
+
+    # 否则自动获取机器人加入的群列表
+    token = await get_tenant_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_ids: list[str] = []
+    page_token = ""
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        while True:
+            params: dict = {"page_size": 50}
+            if page_token:
+                params["page_token"] = page_token
+
+            resp = await client.get(BOT_CHATS_URL, headers=headers, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+
+            if data.get("code") != 0:
+                logger.error("Failed to list bot chats: %s", data)
+                break
+
+            for item in data.get("data", {}).get("items", []):
+                chat_ids.append(item["chat_id"])
+
+            page_token = data.get("data", {}).get("page_token", "")
+            if not data.get("data", {}).get("has_more"):
+                break
+
+    logger.info("Found %d chat(s) for bot", len(chat_ids))
+    return chat_ids
 
 
 async def send_digest_message(
@@ -22,7 +61,7 @@ async def send_digest_message(
     doc_url: str,
     date_str: str,
 ) -> None:
-    """发送每日简报卡片消息到飞书。"""
+    """发送每日简报卡片消息到机器人所在的群聊。"""
     token = await get_tenant_token()
     headers = {
         "Authorization": f"Bearer {token}",
@@ -30,34 +69,31 @@ async def send_digest_message(
     }
 
     card = _build_card(items_by_category, doc_url, date_str)
+    chat_ids = await _get_bot_chat_ids()
 
-    receive_ids = [
-        rid.strip()
-        for rid in config.FEISHU_RECEIVE_ID.split(",")
-        if rid.strip()
-    ]
+    if not chat_ids:
+        logger.warning("Bot is not in any chat group. Please add the bot to a group first.")
+        return
 
     async with httpx.AsyncClient(timeout=30) as client:
-        for receive_id in receive_ids:
+        for chat_id in chat_ids:
             body = {
-                "receive_id": receive_id,
+                "receive_id": chat_id,
                 "msg_type": "interactive",
                 "content": json.dumps(card),
             }
             resp = await client.post(
                 SEND_MSG_URL,
                 headers=headers,
-                params={"receive_id_type": config.FEISHU_RECEIVE_ID_TYPE},
+                params={"receive_id_type": "chat_id"},
                 json=body,
             )
             resp.raise_for_status()
             result = resp.json()
             if result.get("code") != 0:
-                logger.error(
-                    "Send message failed for %s: %s", receive_id, result
-                )
+                logger.error("Send message failed for chat %s: %s", chat_id, result)
             else:
-                logger.info("Message sent to %s", receive_id)
+                logger.info("Message sent to chat %s", chat_id)
 
 
 def _build_card(
@@ -76,13 +112,11 @@ def _build_card(
             continue
 
         icon = category_icons.get(category, "📄")
-        # 分类标题
         elements.append({
             "tag": "markdown",
             "content": f"**{icon} {category}**",
         })
 
-        # 列出前 5 条（简报消息只展示标题和链接）
         lines = []
         for item in items[:5]:
             lines.append(f"• [{item.title[:60]}]({item.url})")
