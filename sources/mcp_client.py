@@ -48,6 +48,14 @@ async def call_mcp_tool(
 
     result = await session.call_tool(tool_name, arguments)
 
+    # 检查 MCP 层面的错误
+    if getattr(result, "isError", False):
+        error_text = ""
+        for content in result.content:
+            if hasattr(content, "text"):
+                error_text += content.text
+        raise RuntimeError(f"MCP tool {tool_name} returned error: {error_text}")
+
     items = []
     for content in result.content:
         if hasattr(content, "text"):
@@ -56,9 +64,33 @@ async def call_mcp_tool(
                 if isinstance(parsed, list):
                     items.extend(parsed)
                 elif isinstance(parsed, dict):
-                    items.append(parsed)
+                    # 处理嵌套格式：{posts: [...]} 或 {data: [...]} 等
+                    unwrapped = _unwrap_nested(parsed)
+                    if unwrapped is not None:
+                        items.extend(unwrapped)
+                    else:
+                        items.append(parsed)
                 else:
                     items.append({"text": content.text})
             except json.JSONDecodeError:
                 items.append({"text": content.text})
+
+    logger.debug("MCP tool %s returned %d items", tool_name, len(items))
     return items
+
+
+def _unwrap_nested(d: dict) -> list[dict] | None:
+    """尝试从嵌套 dict 中提取列表数据。
+
+    很多 MCP 服务返回 {posts: [...], subreddit: "..."} 这样的格式，
+    这里自动解包最大的 list 字段。
+    """
+    # 常见的嵌套键名
+    for key in ("posts", "data", "results", "items", "tweets", "videos"):
+        if key in d and isinstance(d[key], list):
+            return d[key]
+    # 回退：找第一个 list 类型的值
+    for val in d.values():
+        if isinstance(val, list) and val and isinstance(val[0], dict):
+            return val
+    return None

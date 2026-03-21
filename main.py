@@ -65,6 +65,9 @@ async def collect_news() -> dict[str, List[NewsItem]]:
             logger.error("Source fetch failed: %s", result)
             continue
         for item in result:
+            # 过滤掉标题为空的条目
+            if not item.title or not item.title.strip():
+                continue
             cat = item.category or "其他"
             items_by_category[cat].append(item)
 

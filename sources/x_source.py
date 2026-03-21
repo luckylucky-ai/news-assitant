@@ -43,7 +43,16 @@ class XSource(BaseSource):
                             session, "search_tweets", {"query": query, "count": 10}
                         )
                         for tweet in results:
+                            # 跳过错误响应（如 401 认证失败）
+                            if "error" in tweet or "Error" in tweet.get("text", ""):
+                                logger.warning("Skipping X error item: %s",
+                                               tweet.get("error", tweet.get("text", ""))[:100])
+                                continue
+
                             text = tweet.get("text", tweet.get("full_text", ""))
+                            if not text:
+                                continue
+
                             tweet_id = tweet.get("id_str", tweet.get("id", ""))
                             user = tweet.get("user", {})
                             screen_name = user.get("screen_name", "")
