@@ -93,7 +93,13 @@ def _build_content_blocks(
                 },
             })
 
-            if item.summary:
+            # 中文翻译标题
+            if item.title_zh and item.title_zh != item.title:
+                blocks.append(_text_block(f"   📝 {item.title_zh}"))
+
+            if item.summary_zh:
+                blocks.append(_text_block(f"   {item.summary_zh[:200]}"))
+            elif item.summary:
                 blocks.append(_text_block(f"   {item.summary[:200]}"))
 
             source_line = f"   来源: {item.source}"

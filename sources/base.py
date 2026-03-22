@@ -21,6 +21,8 @@ class NewsItem:
     published_at: str = ""
     category: str = ""  # 政治 / AI / 投资
     extra: dict = field(default_factory=dict)
+    title_zh: str = ""    # 中文翻译标题
+    summary_zh: str = ""  # 中文翻译摘要
 
     def to_display(self) -> str:
         parts = [f"[{self.source}] {self.title}"]

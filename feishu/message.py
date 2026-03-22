@@ -99,7 +99,12 @@ def _build_card(
 
         lines = []
         for item in items[:5]:
-            lines.append(f"• [{item.title[:60]}]({item.url})")
+            title_display = item.title[:60]
+            # 如果有中文翻译且与原文不同，显示翻译
+            if item.title_zh and item.title_zh != item.title:
+                lines.append(f"• [{title_display}]({item.url})\n  {item.title_zh[:60]}")
+            else:
+                lines.append(f"• [{title_display}]({item.url})")
         elements.append({"tag": "markdown", "content": "\n".join(lines)})
         elements.append({"tag": "hr"})
 

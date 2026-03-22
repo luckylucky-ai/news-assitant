@@ -28,6 +28,7 @@ from sources.x_source import XSource
 from sources.news_source import NewsSource
 from feishu.docs import create_daily_doc
 from feishu.message import send_digest_message
+from translate import translate_items
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL, logging.INFO),
@@ -81,6 +82,15 @@ async def collect_news() -> dict[str, List[NewsItem]]:
     total = sum(len(v) for v in items_by_category.values())
     logger.info("Collected %d items across %d categories",
                 total, len(items_by_category))
+
+    # 翻译所有非中文条目
+    all_items = [item for items in items_by_category.values() for item in items]
+    if all_items:
+        try:
+            await translate_items(all_items)
+        except Exception:
+            logger.exception("Translation step failed, continuing without translations")
+
     return dict(items_by_category)
 
 
