@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime
 from typing import List
 
 import config
@@ -58,12 +59,14 @@ class YouTubeSource(BaseSource):
                     logger.error("No YouTube MCP tools found")
                     return []
 
+                # 在搜索词中加入日期，确保每天返回不同结果
+                today = datetime.now().strftime("%B %d %Y")  # e.g. "March 25 2026"
                 for category, term in SEARCH_TERMS.items():
                     try:
                         results = await call_mcp_tool(
                             session,
                             search_tool,
-                            {"query": term, "maxResults": 5},
+                            {"query": f"{term} {today}", "maxResults": 5},
                         )
                         for video in results:
                             vid = video.get("videoId", video.get("id", ""))

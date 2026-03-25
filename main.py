@@ -28,6 +28,7 @@ from sources.x_source import XSource
 from sources.news_source import NewsSource
 from feishu.docs import create_daily_doc
 from feishu.message import send_digest_message
+from dedup import dedup_items
 from translate import translate_items
 
 logging.basicConfig(
@@ -72,12 +73,13 @@ async def collect_news() -> dict[str, List[NewsItem]]:
             cat = item.category or "其他"
             items_by_category[cat].append(item)
 
-    # 按热度排序
+    # 按热度排序，然后去重
     for cat in items_by_category:
         items_by_category[cat].sort(
             key=lambda x: x.extra.get("score", x.extra.get("views", 0)),
             reverse=True,
         )
+        items_by_category[cat] = dedup_items(items_by_category[cat])
 
     total = sum(len(v) for v in items_by_category.values())
     logger.info("Collected %d items across %d categories",

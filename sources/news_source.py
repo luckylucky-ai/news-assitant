@@ -32,7 +32,9 @@ class NewsSource(BaseSource):
 
         items: List[NewsItem] = []
         seen: set[str] = set()
-        from_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+        now = datetime.now(timezone.utc)
+        from_date = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+        to_date = now.strftime("%Y-%m-%d")
 
         async with httpx.AsyncClient(timeout=30) as client:
             for category, q in CATEGORY_QUERIES.items():
@@ -42,7 +44,8 @@ class NewsSource(BaseSource):
                         params={
                             "q": q,
                             "from": from_date,
-                            "sortBy": "popularity",
+                            "to": to_date,
+                            "sortBy": "publishedAt",
                             "pageSize": 5,
                             "language": "en",
                             "apiKey": config.NEWSAPI_KEY,

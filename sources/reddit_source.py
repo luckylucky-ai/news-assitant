@@ -75,7 +75,7 @@ class RedditSource(BaseSource):
                 results = await call_mcp_tool(
                     session,
                     "search_reddit",
-                    {"query": query, "limit": 5},
+                    {"query": query, "sort": "new", "time_filter": "day", "limit": 5},
                 )
                 for post in results:
                     items.append(self._parse_post(post, category, "search"))
@@ -117,7 +117,7 @@ class RedditSource(BaseSource):
                     results = await call_mcp_tool(
                         session,
                         "search_reddit",
-                        {"query": query, "limit": 10},
+                        {"query": query, "sort": "new", "time_filter": "day", "limit": 10},
                     )
                     for post in results:
                         category_items.append(
@@ -136,13 +136,13 @@ class RedditSource(BaseSource):
             return await call_mcp_tool(
                 session,
                 "browse_subreddit",
-                {"subreddit": sub_name, "sort": "hot", "limit": 5},
+                {"subreddit": sub_name, "sort": "new", "limit": 5},
             )
         elif "get_subreddit_posts" in tool_names:
             return await call_mcp_tool(
                 session,
                 "get_subreddit_posts",
-                {"subreddit": sub_name, "sort": "hot", "limit": 5},
+                {"subreddit": sub_name, "sort": "new", "limit": 5},
             )
         return []
 
